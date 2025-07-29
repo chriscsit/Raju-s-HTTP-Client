@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react'
-import { X, Clock, Bookmark, Plus, Trash2, Search, FolderOpen, Upload, Download, FileText, ChevronRight, ChevronDown, Folder } from 'lucide-react'
+import { X, Clock, Bookmark, Plus, Trash2, Search, FolderOpen, Upload, Download, FileText, ChevronRight, ChevronDown, Folder, Save, HardDrive } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const Sidebar = ({
@@ -12,7 +12,9 @@ const Sidebar = ({
   onSaveToCollection,
   onImportCollection,
   onDeleteFromCollection,
-  currentRequest
+  currentRequest,
+  environments,
+  onImportWorkspace
 }) => {
   const [activeTab, setActiveTab] = useState('history')
   const [searchTerm, setSearchTerm] = useState('')
@@ -20,6 +22,7 @@ const Sidebar = ({
   const [saveName, setSaveName] = useState('')
   const [expandedFolders, setExpandedFolders] = useState(new Set())
   const fileInputRef = useRef(null)
+  const workspaceFileInputRef = useRef(null)
 
   const filteredHistory = history.filter(item =>
     item.request.url.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -114,6 +117,40 @@ const Sidebar = ({
   // Check if folder is expanded
   const isFolderExpanded = (folderId) => {
     return expandedFolders.has(folderId)
+  }
+
+  // Export entire workspace
+  const exportWorkspace = () => {
+    const workspaceData = {
+      version: "1.0.0",
+      type: "workspace",
+      info: {
+        name: "Raju's Client Workspace",
+        description: "Complete workspace export including collections, environments, and settings",
+        exportedAt: new Date().toISOString(),
+        exportedBy: "Raju's API Client"
+      },
+      collections: collections,
+      environments: environments || [],
+      history: history.slice(-50), // Export last 50 history items to avoid huge files
+      settings: {
+        version: "1.0.0",
+        timestamp: new Date().toISOString()
+      }
+    }
+
+    const blob = new Blob([JSON.stringify(workspaceData, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `rajus-client-workspace-${new Date().toISOString().split('T')[0]}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    
+    const totalRequests = countRequests(collections)
+    toast.success(`Workspace exported successfully!\n${totalRequests} requests, ${environments?.length || 0} environments, ${history.length} history items`)
   }
 
   const exportCollections = () => {
@@ -287,6 +324,62 @@ const Sidebar = ({
     
     reader.onerror = () => {
       toast.error('Failed to read file. Please try again.')
+    }
+    
+    reader.readAsText(file)
+    event.target.value = '' // Reset file input
+  }
+
+  // Import workspace
+  const handleImportWorkspace = (event) => {
+    const file = event.target.files[0]
+    if (!file) return
+
+    const fileName = file.name.toLowerCase()
+    if (!fileName.endsWith('.json') && file.type !== 'application/json') {
+      toast.error('Please select a valid JSON workspace file')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const content = JSON.parse(e.target.result)
+        console.log('Importing workspace:', content)
+        
+        // Validate workspace format
+        if (content.type !== 'workspace' || !content.version) {
+          toast.error('Invalid workspace file format')
+          return
+        }
+
+        // Confirm before importing (this will replace current data)
+        if (collections.length > 0 || environments?.length > 0 || history.length > 0) {
+          if (!window.confirm('This will replace your current workspace data. Are you sure you want to continue?')) {
+            return
+          }
+        }
+
+        // Import workspace data
+        const workspaceData = {
+          collections: content.collections || [],
+          environments: content.environments || [],
+          history: content.history || []
+        }
+
+        onImportWorkspace(workspaceData)
+        
+        const totalRequests = countRequests(content.collections || [])
+        toast.success(`Workspace imported successfully!\n${totalRequests} requests, ${content.environments?.length || 0} environments, ${content.history?.length || 0} history items`)
+        
+      } catch (error) {
+        console.error('Workspace import error:', error)
+        toast.error(`Import failed: ${error.message}`)
+      }
+    }
+    
+    reader.onerror = () => {
+      toast.error('Failed to read workspace file. Please try again.')
     }
     
     reader.readAsText(file)
@@ -515,22 +608,59 @@ const Sidebar = ({
                     Save Current Request
                   </button>
                   
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="flex-1 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors flex items-center justify-center"
-                    >
-                      <Upload size={14} className="mr-2" />
-                      Import
-                    </button>
-                    <button
-                      onClick={exportCollections}
-                      disabled={collections.length === 0}
-                      className="flex-1 px-3 py-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
-                    >
-                      <Download size={14} className="mr-2" />
-                      Export
-                    </button>
+                  {/* Workspace Actions */}
+                  <div className="bg-gradient-to-r from-purple-50 to-blue-50 p-3 rounded-lg border border-purple-200">
+                    <h4 className="text-sm font-semibold text-purple-700 mb-2 flex items-center">
+                      <HardDrive size={14} className="mr-2" />
+                      Workspace
+                    </h4>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => workspaceFileInputRef.current?.click()}
+                        className="flex-1 px-3 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors flex items-center justify-center text-sm"
+                      >
+                        <Upload size={12} className="mr-2" />
+                        Import
+                      </button>
+                      <button
+                        onClick={exportWorkspace}
+                        className="flex-1 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center text-sm"
+                      >
+                        <Save size={12} className="mr-2" />
+                        Export
+                      </button>
+                    </div>
+                    <p className="text-xs text-purple-600 mt-1 text-center">
+                      Complete backup: collections, environments, history
+                    </p>
+                  </div>
+                  
+                  {/* Collection-Only Actions */}
+                  <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center">
+                      <Bookmark size={14} className="mr-2" />
+                      Collections Only
+                    </h4>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex-1 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors flex items-center justify-center text-sm"
+                      >
+                        <Upload size={12} className="mr-2" />
+                        Import
+                      </button>
+                      <button
+                        onClick={exportCollections}
+                        disabled={collections.length === 0}
+                        className="flex-1 px-3 py-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center text-sm"
+                      >
+                        <Download size={12} className="mr-2" />
+                        Export
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-600 mt-1 text-center">
+                      Postman-compatible collections
+                    </p>
                   </div>
                   
                   <input
@@ -538,6 +668,13 @@ const Sidebar = ({
                     type="file"
                     accept=".json,application/json"
                     onChange={handleImportFile}
+                    className="hidden"
+                  />
+                  <input
+                    ref={workspaceFileInputRef}
+                    type="file"
+                    accept=".json,application/json"
+                    onChange={handleImportWorkspace}
                     className="hidden"
                   />
                 </div>

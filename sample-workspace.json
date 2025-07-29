@@ -1,0 +1,213 @@
+{
+  "version": "1.0.0",
+  "type": "workspace",
+  "info": {
+    "name": "Sample Workspace",
+    "description": "A sample workspace demonstrating the complete format with collections, environments, and history",
+    "exportedAt": "2025-01-29T16:45:00.000Z",
+    "exportedBy": "Raju's API Client"
+  },
+  "collections": [
+    {
+      "id": "collection-1",
+      "name": "User Management",
+      "type": "request",
+      "request": {
+        "method": "GET",
+        "url": "https://jsonplaceholder.typicode.com/users",
+        "headers": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}",
+            "enabled": true
+          },
+          {
+            "key": "Content-Type", 
+            "value": "application/json",
+            "enabled": true
+          },
+          {
+            "key": "",
+            "value": "",
+            "enabled": true
+          }
+        ],
+        "body": "",
+        "bodyType": "json"
+      },
+      "createdAt": "2025-01-29T16:00:00.000Z"
+    },
+    {
+      "id": "folder-1",
+      "name": "Authentication",
+      "type": "folder",
+      "items": [
+        {
+          "id": "auth-login",
+          "name": "Login",
+          "type": "request",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/login",
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              },
+              {
+                "key": "",
+                "value": "",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"email\": \"{{user_email}}\",\n  \"password\": \"{{user_password}}\"\n}",
+            "bodyType": "json"
+          },
+          "createdAt": "2025-01-29T16:10:00.000Z"
+        },
+        {
+          "id": "auth-logout",
+          "name": "Logout",
+          "type": "request",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/logout",
+            "headers": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "enabled": true
+              },
+              {
+                "key": "",
+                "value": "",
+                "enabled": true
+              }
+            ],
+            "body": "",
+            "bodyType": "json"
+          },
+          "createdAt": "2025-01-29T16:15:00.000Z"
+        }
+      ],
+      "createdAt": "2025-01-29T16:05:00.000Z"
+    }
+  ],
+  "environments": [
+    {
+      "id": "env-development",
+      "name": "Development",
+      "variables": [
+        {
+          "key": "base_url",
+          "value": "https://api-dev.example.com",
+          "enabled": true
+        },
+        {
+          "key": "auth_token",
+          "value": "dev-token-123",
+          "enabled": true
+        },
+        {
+          "key": "user_email",
+          "value": "test@example.com",
+          "enabled": true
+        },
+        {
+          "key": "user_password",
+          "value": "password123",
+          "enabled": true
+        }
+      ],
+      "createdAt": "2025-01-29T15:30:00.000Z"
+    },
+    {
+      "id": "env-production",
+      "name": "Production",
+      "variables": [
+        {
+          "key": "base_url",
+          "value": "https://api.example.com",
+          "enabled": true
+        },
+        {
+          "key": "auth_token",
+          "value": "prod-token-456",
+          "enabled": true
+        },
+        {
+          "key": "user_email",
+          "value": "admin@example.com",
+          "enabled": true
+        },
+        {
+          "key": "user_password",
+          "value": "secure-password",
+          "enabled": true
+        }
+      ],
+      "createdAt": "2025-01-29T15:35:00.000Z"
+    }
+  ],
+  "history": [
+    {
+      "id": "history-1",
+      "request": {
+        "method": "GET",
+        "url": "https://jsonplaceholder.typicode.com/users",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "enabled": true
+          }
+        ],
+        "body": "",
+        "bodyType": "json"
+      },
+      "response": {
+        "status": 200,
+        "duration": 342,
+        "size": 5432,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "server": "cloudflare"
+        },
+        "data": "[{\"id\": 1, \"name\": \"Leanne Graham\", \"email\": \"Sincere@april.biz\"}]"
+      },
+      "timestamp": "2025-01-29T16:20:00.000Z"
+    },
+    {
+      "id": "history-2", 
+      "request": {
+        "method": "POST",
+        "url": "https://jsonplaceholder.typicode.com/posts",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "enabled": true
+          }
+        ],
+        "body": "{\"title\": \"Sample Post\", \"body\": \"This is a test post\", \"userId\": 1}",
+        "bodyType": "json"
+      },
+      "response": {
+        "status": 201,
+        "duration": 256,
+        "size": 312,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "location": "/posts/101"
+        },
+        "data": "{\"id\": 101, \"title\": \"Sample Post\", \"body\": \"This is a test post\", \"userId\": 1}"
+      },
+      "timestamp": "2025-01-29T16:25:00.000Z"
+    }
+  ],
+  "settings": {
+    "version": "1.0.0",
+    "timestamp": "2025-01-29T16:45:00.000Z"
+  }
+} 

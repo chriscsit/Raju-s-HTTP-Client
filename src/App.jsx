@@ -121,6 +121,21 @@ function App() {
     })
   }
 
+  const importWorkspace = (workspaceData) => {
+    // Replace current workspace data with imported data
+    if (workspaceData.collections) {
+      setCollections(workspaceData.collections)
+    }
+    if (workspaceData.environments) {
+      setEnvironments(workspaceData.environments)
+      // Reset active environment since we're importing new environments
+      setActiveEnvironment(null)
+    }
+    if (workspaceData.history) {
+      setHistory(workspaceData.history)
+    }
+  }
+
   const deleteFromCollection = (id) => {
     setCollections(prev => prev.filter(item => item.id !== id))
   }
@@ -181,6 +196,8 @@ function App() {
         onImportCollection={importCollection}
         onDeleteFromCollection={deleteFromCollection}
         currentRequest={request}
+        environments={environments}
+        onImportWorkspace={importWorkspace}
       />
 
       {/* Main Content */}
