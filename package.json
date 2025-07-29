@@ -18,7 +18,10 @@
     "run:electron": "npm run build:electron && cd electron && npx electron .",
     "run:electron-dev": "npm run build:electron && cd electron && npm run electron:start-simple",
     "sync": "npx cap sync",
-    "serve:electron": "cd electron && npm run electron:serve"
+    "serve:electron": "cd electron && npm run electron:serve",
+    "certificates:generate": "./scripts/generate-certificates.sh",
+    "ios:build": "./scripts/create-ios-build.sh",
+    "ios:cloud": "./scripts/cloud-build.sh"
   },
   "dependencies": {
     "@capacitor-community/electron": "^5.0.1",
