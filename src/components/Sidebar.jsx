@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react'
-import { X, Clock, Bookmark, Plus, Trash2, Search, FolderOpen, Upload, Download, FileText } from 'lucide-react'
+import { X, Clock, Bookmark, Plus, Trash2, Search, FolderOpen, Upload, Download, FileText, ChevronRight, ChevronDown, Folder } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const Sidebar = ({
@@ -25,10 +25,35 @@ const Sidebar = ({
     item.request.method.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  const filteredCollections = collections.filter(item =>
-    item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.request.url.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  // Flatten collections for search (recursively search through folders)
+  const flattenCollections = (items) => {
+    const flattened = []
+    items.forEach(item => {
+      if (item.type === 'folder') {
+        flattened.push(item)
+        flattened.push(...flattenCollections(item.items))
+      } else {
+        flattened.push(item)
+      }
+    })
+    return flattened
+  }
+
+  const filteredCollections = collections.filter(item => {
+    if (item.type === 'folder') {
+      // For folders, check folder name or any nested request
+      const folderNameMatch = item.name.toLowerCase().includes(searchTerm.toLowerCase())
+      const nestedMatch = flattenCollections(item.items).some(nestedItem => 
+        nestedItem.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (nestedItem.request && nestedItem.request.url.toLowerCase().includes(searchTerm.toLowerCase()))
+      )
+      return folderNameMatch || nestedMatch
+    } else {
+      // For requests, check name and URL
+      return item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.request && item.request.url.toLowerCase().includes(searchTerm.toLowerCase()))
+    }
+  })
 
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -72,10 +97,76 @@ const Sidebar = ({
     toast.success('Request deleted from collection')
   }
 
+  // Toggle folder expansion
+  const toggleFolder = (folderId) => {
+    const toggleInArray = (items) => {
+      return items.map(item => {
+        if (item.type === 'folder') {
+          if (item.id === folderId) {
+            return { ...item, isExpanded: !item.isExpanded }
+          } else {
+            return { ...item, items: toggleInArray(item.items) }
+          }
+        }
+        return item
+      })
+    }
+    
+    // We need to update the collections state
+    // This assumes onImportCollection can also be used to update collections
+    const updatedCollections = toggleInArray(collections)
+    onImportCollection(updatedCollections)
+  }
+
   const exportCollections = () => {
     if (collections.length === 0) {
       toast.error('No collections to export')
       return
+    }
+
+    // Convert our hierarchical structure back to Postman format
+    const convertToPostmanFormat = (items) => {
+      return items.map(item => {
+        if (item.type === 'folder') {
+          return {
+            name: item.name,
+            id: item.id,
+            item: convertToPostmanFormat(item.items)
+          }
+        } else {
+          return {
+            name: item.name,
+            id: item.id,
+            request: {
+              method: item.request.method,
+              header: item.request.headers
+                .filter(h => h.enabled && h.key && h.value)
+                .map(h => ({
+                  key: h.key,
+                  value: h.value,
+                  type: "text"
+                })),
+              body: item.request.body ? {
+                mode: item.request.bodyType,
+                raw: item.request.body,
+                options: {
+                  raw: {
+                    language: item.request.bodyType === 'json' ? 'json' : 'text'
+                  }
+                }
+              } : undefined,
+              url: {
+                raw: item.request.url,
+                protocol: item.request.url.startsWith('https') ? 'https' : 'http',
+                host: item.request.url.split('/')[2]?.split(':')[0]?.split('.') || [],
+                path: item.request.url.split('/').slice(3) || []
+              }
+            },
+            response: [],
+            createdAt: item.createdAt
+          }
+        }
+      })
     }
 
     const exportData = {
@@ -86,37 +177,7 @@ const Sidebar = ({
         schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
         exportedAt: new Date().toISOString()
       },
-      item: collections.map(collection => ({
-        name: collection.name,
-        id: collection.id,
-        request: {
-          method: collection.request.method,
-          header: collection.request.headers
-            .filter(h => h.enabled && h.key && h.value)
-            .map(h => ({
-              key: h.key,
-              value: h.value,
-              type: "text"
-            })),
-          body: collection.request.body ? {
-            mode: collection.request.bodyType,
-            raw: collection.request.body,
-            options: {
-              raw: {
-                language: collection.request.bodyType === 'json' ? 'json' : 'text'
-              }
-            }
-          } : undefined,
-          url: {
-            raw: collection.request.url,
-            protocol: collection.request.url.startsWith('https') ? 'https' : 'http',
-            host: collection.request.url.split('/')[2]?.split(':')[0]?.split('.') || [],
-            path: collection.request.url.split('/').slice(3) || []
-          }
-        },
-        response: [],
-        createdAt: collection.createdAt
-      }))
+      item: convertToPostmanFormat(collections)
     }
 
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
@@ -205,8 +266,20 @@ const Sidebar = ({
           throw new Error('No valid requests found in the imported file')
         }
 
+        // Count total requests (including nested ones)
+        const countRequests = (items) => {
+          return items.reduce((count, item) => {
+            if (item.type === 'folder') {
+              return count + countRequests(item.items)
+            } else {
+              return count + 1
+            }
+          }, 0)
+        }
+
+        const totalRequests = countRequests(importedCollections)
         onImportCollection(importedCollections)
-        toast.success(`Successfully imported ${importedCollections.length} request${importedCollections.length !== 1 ? 's' : ''} from ${file.name}`)
+        toast.success(`Successfully imported ${totalRequests} request${totalRequests !== 1 ? 's' : ''} from ${file.name}`)
         
       } catch (error) {
         console.error('Import error:', error)
@@ -226,15 +299,19 @@ const Sidebar = ({
   const processPostmanCollection = (content) => {
     const items = []
     
-    const processItem = (item, folderName = '') => {
+    const processItem = (item) => {
       if (item.item && Array.isArray(item.item)) {
-        // This is a folder, process its items recursively
-        const currentFolderName = folderName ? `${folderName}/${item.name}` : item.name
-        item.item.forEach(subItem => processItem(subItem, currentFolderName))
+        // This is a folder - create a folder structure
+        return {
+          id: item.id || Date.now() + Math.random(),
+          name: item.name || 'Untitled Folder',
+          type: 'folder',
+          isExpanded: false, // Default to collapsed
+          items: item.item.map(subItem => processItem(subItem)).filter(Boolean),
+          createdAt: new Date().toISOString()
+        }
       } else if (item.request) {
         // This is a request
-        const requestName = folderName ? `${folderName}/${item.name}` : item.name
-        
         let url = ''
         if (typeof item.request.url === 'string') {
           url = item.request.url
@@ -247,9 +324,10 @@ const Sidebar = ({
           url = `${protocol}://${host}${path}`
         }
 
-        items.push({
+        return {
           id: item.id || Date.now() + Math.random(),
-          name: requestName || `Imported Request ${items.length + 1}`,
+          name: item.name || `Imported Request`,
+          type: 'request',
           request: {
             method: item.request.method || 'GET',
             url: url,
@@ -258,12 +336,12 @@ const Sidebar = ({
             bodyType: getBodyType(item.request.body)
           },
           createdAt: item.createdAt || new Date().toISOString()
-        })
+        }
       }
+      return null
     }
 
-    content.item.forEach(item => processItem(item))
-    return items
+    return content.item.map(item => processItem(item)).filter(Boolean)
   }
 
   // Helper function to format headers
@@ -483,54 +561,16 @@ const Sidebar = ({
                     </div>
                     
                     {filteredCollections.map((item) => (
-                      <div
+                      <CollectionItem
                         key={item.id}
-                        className="p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors group hover:border-gray-300"
-                      >
-                        <div 
-                          onClick={() => onLoadFromCollection(item)}
-                          className="cursor-pointer"
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center space-x-2">
-                              <span className={`px-2 py-1 rounded text-xs font-medium ${getMethodColor(item.request.method)}`}>
-                                {item.request.method}
-                              </span>
-                              <div className="text-xs text-gray-500">
-                                {formatDate(item.createdAt)}
-                              </div>
-                            </div>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                deleteFromCollection(item.id)
-                              }}
-                              className="p-1 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity rounded hover:bg-red-50"
-                              title="Delete request"
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                          <p className="text-sm font-medium text-gray-900 mb-1 truncate">
-                            {item.name}
-                          </p>
-                          <p className="text-xs text-gray-600 truncate">
-                            {item.request.url || 'No URL specified'}
-                          </p>
-                          
-                          {/* Request Details Preview */}
-                          <div className="mt-2 flex items-center text-xs text-gray-500 space-x-3">
-                            {item.request.headers?.some(h => h.enabled && h.key && h.value) && (
-                              <span>
-                                {item.request.headers.filter(h => h.enabled && h.key && h.value).length} headers
-                              </span>
-                            )}
-                            {item.request.body && (
-                              <span>Body: {item.request.bodyType}</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
+                        item={item}
+                        onLoadFromCollection={onLoadFromCollection}
+                        onDeleteFromCollection={deleteFromCollection}
+                        onToggleFolder={toggleFolder}
+                        getMethodColor={getMethodColor}
+                        formatDate={formatDate}
+                        level={0}
+                      />
                     ))}
                   </div>
                 )}
@@ -575,6 +615,127 @@ const Sidebar = ({
       )}
     </>
   )
+}
+
+// Recursive component to display collection items (folders and requests)
+const CollectionItem = ({ 
+  item, 
+  onLoadFromCollection, 
+  onDeleteFromCollection, 
+  onToggleFolder, 
+  getMethodColor, 
+  formatDate, 
+  level = 0 
+}) => {
+  if (item.type === 'folder') {
+    return (
+      <div className="mb-1">
+        {/* Folder Header */}
+        <div 
+          onClick={() => onToggleFolder(item.id)}
+          className={`flex items-center p-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors group ${
+            level > 0 ? 'ml-4' : ''
+          }`}
+          style={{ paddingLeft: `${8 + level * 16}px` }}
+        >
+          <div className="flex items-center flex-1">
+            {item.isExpanded ? (
+              <ChevronDown size={14} className="text-gray-500 mr-2" />
+            ) : (
+              <ChevronRight size={14} className="text-gray-500 mr-2" />
+            )}
+            <Folder size={14} className="text-blue-500 mr-2" />
+            <span className="text-sm font-medium text-gray-900">{item.name}</span>
+            <span className="ml-2 text-xs text-gray-500">
+              ({item.items.length} item{item.items.length !== 1 ? 's' : ''})
+            </span>
+          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onDeleteFromCollection(item.id)
+            }}
+            className="p-1 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity rounded hover:bg-red-50"
+            title="Delete folder"
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
+
+        {/* Folder Contents */}
+        {item.isExpanded && (
+          <div className="ml-2">
+            {item.items.map((subItem) => (
+              <CollectionItem
+                key={subItem.id}
+                item={subItem}
+                onLoadFromCollection={onLoadFromCollection}
+                onDeleteFromCollection={onDeleteFromCollection}
+                onToggleFolder={onToggleFolder}
+                getMethodColor={getMethodColor}
+                formatDate={formatDate}
+                level={level + 1}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  } else {
+    // Request item
+    return (
+      <div 
+        className={`mb-1 ${level > 0 ? 'ml-4' : ''}`}
+        style={{ paddingLeft: `${level * 16}px` }}
+      >
+        <div className="p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors group hover:border-gray-300">
+          <div 
+            onClick={() => onLoadFromCollection(item)}
+            className="cursor-pointer"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center space-x-2">
+                <span className={`px-2 py-1 rounded text-xs font-medium ${getMethodColor(item.request.method)}`}>
+                  {item.request.method}
+                </span>
+                <div className="text-xs text-gray-500">
+                  {formatDate(item.createdAt)}
+                </div>
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onDeleteFromCollection(item.id)
+                }}
+                className="p-1 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity rounded hover:bg-red-50"
+                title="Delete request"
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+            <p className="text-sm font-medium text-gray-900 mb-1 truncate">
+              {item.name}
+            </p>
+            <p className="text-xs text-gray-600 truncate">
+              {item.request.url || 'No URL specified'}
+            </p>
+            
+            {/* Request Details Preview */}
+            <div className="mt-2 flex items-center text-xs text-gray-500 space-x-3">
+              {item.request.headers?.some(h => h.enabled && h.key && h.value) && (
+                <span>
+                  {item.request.headers.filter(h => h.enabled && h.key && h.value).length} headers
+                </span>
+              )}
+              {item.request.body && (
+                <span>Body: {item.request.bodyType}</span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 }
 
 export default Sidebar 
