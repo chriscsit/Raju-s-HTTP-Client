@@ -1,0 +1,53 @@
+{
+  "name": "postman-client",
+  "version": "1.0.0",
+  "description": "Raju's Client - A modern, user-friendly API client similar to Postman",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "vite",
+    "build:mobile": "npm run build && npx cap sync",
+    "build:ios": "npm run build && npx cap sync ios && npx cap open ios",
+    "build:electron": "npm run build && npx cap sync @capacitor-community/electron",
+    "open:ios": "npx cap open ios",
+    "open:electron": "npx cap open @capacitor-community/electron",
+    "run:ios": "npm run build:ios",
+    "run:electron": "npm run build:electron && cd electron && npx electron .",
+    "run:electron-dev": "npm run build:electron && cd electron && npm run electron:start-simple",
+    "sync": "npx cap sync",
+    "serve:electron": "cd electron && npm run electron:serve"
+  },
+  "dependencies": {
+    "@capacitor-community/electron": "^5.0.1",
+    "@capacitor/cli": "^7.4.2",
+    "@capacitor/core": "^7.4.2",
+    "@capacitor/ios": "^7.4.2",
+    "@monaco-editor/react": "^4.6.0",
+    "axios": "^1.6.2",
+    "lucide-react": "^0.294.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-hot-toast": "^2.4.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.3.6",
+    "vite": "^5.0.8"
+  },
+  "keywords": [
+    "api",
+    "client",
+    "postman",
+    "http",
+    "rest"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}
