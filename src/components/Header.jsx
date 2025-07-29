@@ -1,7 +1,14 @@
 import React from 'react'
-import { Menu, Zap, Github, Globe, Settings } from 'lucide-react'
+import { Menu, Zap, Github, Globe, Settings, Save, Clock } from 'lucide-react'
 
-const Header = ({ onToggleSidebar, activeEnvironment, onOpenEnvironmentManager }) => {
+const Header = ({ 
+  onToggleSidebar, 
+  activeEnvironment, 
+  onOpenEnvironmentManager, 
+  autoSaveEnabled, 
+  onToggleAutoSave, 
+  lastAutoSave 
+}) => {
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-4">
       <div className="flex items-center justify-between">
@@ -34,22 +41,52 @@ const Header = ({ onToggleSidebar, activeEnvironment, onOpenEnvironmentManager }
                 {activeEnvironment ? activeEnvironment.name : 'No Environment'}
               </span>
             </div>
+                                    <button
+                onClick={onOpenEnvironmentManager}
+                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Manage Environments"
+              >
+                <Settings size={16} />
+              </button>
+        </div>
+        
+        {/* Auto-save Settings */}
+        <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2">
             <button
-              onClick={onOpenEnvironmentManager}
-              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-              title="Manage Environments"
+              onClick={onToggleAutoSave}
+              className={`flex items-center space-x-1 px-3 py-1 rounded-lg text-sm transition-colors ${
+                autoSaveEnabled 
+                  ? 'bg-green-100 text-green-700 hover:bg-green-200' 
+                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+              }`}
+              title={autoSaveEnabled ? 'Auto-save is ON' : 'Auto-save is OFF'}
             >
-              <Settings size={16} />
+              <Save size={14} />
+              <span className="hidden md:inline">{autoSaveEnabled ? 'Auto-Save ON' : 'Auto-Save OFF'}</span>
             </button>
+            
+            {lastAutoSave && autoSaveEnabled && (
+              <div className="hidden lg:flex items-center text-xs text-gray-400" title={`Last saved: ${new Date(lastAutoSave).toLocaleString()}`}>
+                <Clock size={12} className="mr-1" />
+                <span>
+                  {new Date(lastAutoSave).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })}
+                </span>
+              </div>
+            )}
           </div>
-          
-          <div className="hidden lg:flex items-center space-x-2 text-sm text-gray-600">
-            <span>Version 1.0.0</span>
-          </div>
-          
-          <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
-            <Github size={20} />
-          </button>
+        </div>
+        
+        <div className="hidden lg:flex items-center space-x-2 text-sm text-gray-600">
+          <span>Version 1.0.0</span>
+        </div>
+        
+        <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
+          <Github size={20} />
+        </button>
         </div>
       </div>
     </header>

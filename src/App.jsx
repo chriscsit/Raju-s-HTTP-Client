@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { Toaster } from 'react-hot-toast'
+import React, { useState, useEffect, useCallback } from 'react'
+import { Toaster, toast } from 'react-hot-toast'
 import Header from './components/Header'
 import RequestPanel from './components/RequestPanel'
 import ResponsePanel from './components/ResponsePanel'
@@ -23,14 +23,97 @@ function App() {
   const [environments, setEnvironments] = useState([])
   const [activeEnvironment, setActiveEnvironment] = useState(null)
   const [environmentManagerOpen, setEnvironmentManagerOpen] = useState(false)
+  
+  // Auto-save settings
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState(() => {
+    const saved = localStorage.getItem('autoSaveEnabled')
+    return saved !== null ? JSON.parse(saved) : true // Default to enabled
+  })
+  const [lastAutoSave, setLastAutoSave] = useState(null)
 
-  // Load data from localStorage on mount
+  // Auto-save workspace to localStorage
+  const autoSaveWorkspace = useCallback(() => {
+    if (!autoSaveEnabled) return
+    
+    try {
+      const workspaceData = {
+        version: "1.0.0",
+        type: "auto-workspace",
+        info: {
+          name: "Auto-saved Workspace",
+          description: "Automatically saved workspace data",
+          savedAt: new Date().toISOString(),
+          savedBy: "Raju's API Client Auto-Save"
+        },
+        collections: collections,
+        environments: environments,
+        history: history.slice(-50), // Keep last 50 items
+        activeEnvironment: activeEnvironment,
+        settings: {
+          autoSaveEnabled: autoSaveEnabled,
+          timestamp: new Date().toISOString()
+        }
+      }
+      
+      localStorage.setItem('autoSavedWorkspace', JSON.stringify(workspaceData))
+      setLastAutoSave(new Date().toISOString())
+      
+      // Show subtle notification only if it's been more than 30 seconds since last save
+      const now = new Date().toISOString()
+      const timeSinceLastSave = lastAutoSave ? new Date(now) - new Date(lastAutoSave) : Infinity
+      
+      if (timeSinceLastSave > 30000) { // Only show if more than 30 seconds
+        toast.success('✨ Workspace auto-saved', {
+          duration: 2000,
+          position: 'bottom-right',
+          style: {
+            background: '#f3f4f6',
+            color: '#374151',
+            fontSize: '14px',
+          }
+        })
+      }
+    } catch (error) {
+      console.error('Auto-save failed:', error)
+    }
+  }, [collections, environments, history, activeEnvironment, autoSaveEnabled])
+
+  // Load data from localStorage on mount (including auto-saved workspace)
   useEffect(() => {
     const savedHistory = localStorage.getItem('api-client-history')
     const savedCollections = localStorage.getItem('api-client-collections')
     const savedEnvironments = localStorage.getItem('api-client-environments')
     const savedActiveEnvironment = localStorage.getItem('api-client-active-environment')
+    const autoSavedWorkspace = localStorage.getItem('autoSavedWorkspace')
     
+    // Check if we have auto-saved workspace and no manual data
+    const hasManualData = savedHistory || savedCollections || savedEnvironments
+    
+    if (autoSavedWorkspace && autoSaveEnabled) {
+      try {
+        const workspaceData = JSON.parse(autoSavedWorkspace)
+        
+        if (workspaceData.type === 'auto-workspace' && workspaceData.version) {
+          // If no manual data exists, load from auto-save
+          if (!hasManualData) {
+            if (workspaceData.collections) setCollections(workspaceData.collections)
+            if (workspaceData.environments) setEnvironments(workspaceData.environments)
+            if (workspaceData.history) setHistory(workspaceData.history)
+            if (workspaceData.activeEnvironment) setActiveEnvironment(workspaceData.activeEnvironment)
+            
+            toast.success('🔄 Previous workspace restored', {
+              duration: 3000,
+              position: 'top-center',
+            })
+            return
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load auto-saved workspace:', error)
+      }
+    }
+    
+    // Fallback to manual localStorage data
     if (savedHistory) {
       setHistory(JSON.parse(savedHistory))
     }
@@ -68,6 +151,70 @@ function App() {
   useEffect(() => {
     localStorage.setItem('api-client-active-environment', JSON.stringify(activeEnvironment?.id || null))
   }, [activeEnvironment])
+
+  // Save auto-save setting to localStorage
+  useEffect(() => {
+    localStorage.setItem('autoSaveEnabled', JSON.stringify(autoSaveEnabled))
+  }, [autoSaveEnabled])
+
+  // Auto-save on data changes (debounced)
+  useEffect(() => {
+    if (collections.length > 0 || environments.length > 0 || history.length > 0) {
+      const timeoutId = setTimeout(() => {
+        autoSaveWorkspace()
+      }, 2000) // Wait 2 seconds after last change
+      
+      return () => clearTimeout(timeoutId)
+    }
+  }, [collections, environments, history, autoSaveWorkspace])
+
+  // Auto-save on window close
+  useEffect(() => {
+    const handleBeforeUnload = (event) => {
+      if (autoSaveEnabled && (collections.length > 0 || environments.length > 0 || history.length > 0)) {
+        // Synchronous save for beforeunload
+        try {
+          const workspaceData = {
+            version: "1.0.0",
+            type: "auto-workspace",
+            info: {
+              name: "Auto-saved Workspace",
+              description: "Automatically saved on app close",
+              savedAt: new Date().toISOString(),
+              savedBy: "Raju's API Client Auto-Save"
+            },
+            collections: collections,
+            environments: environments,
+            history: history.slice(-50),
+            activeEnvironment: activeEnvironment,
+            settings: {
+              autoSaveEnabled: autoSaveEnabled,
+              timestamp: new Date().toISOString()
+            }
+          }
+          localStorage.setItem('autoSavedWorkspace', JSON.stringify(workspaceData))
+        } catch (error) {
+          console.error('Auto-save on close failed:', error)
+        }
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [collections, environments, history, activeEnvironment, autoSaveEnabled])
+
+  // Periodic auto-save (every 5 minutes)
+  useEffect(() => {
+    if (!autoSaveEnabled) return
+    
+    const intervalId = setInterval(() => {
+      if (collections.length > 0 || environments.length > 0 || history.length > 0) {
+        autoSaveWorkspace()
+      }
+    }, 5 * 60 * 1000) // 5 minutes
+    
+    return () => clearInterval(intervalId)
+  }, [autoSaveWorkspace, autoSaveEnabled])
 
   const updateRequest = (updates) => {
     setRequest(prev => ({ ...prev, ...updates }))
@@ -206,6 +353,18 @@ function App() {
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
           activeEnvironment={activeEnvironment}
           onOpenEnvironmentManager={() => setEnvironmentManagerOpen(true)}
+          autoSaveEnabled={autoSaveEnabled}
+          onToggleAutoSave={() => {
+            setAutoSaveEnabled(prev => {
+              const newValue = !prev
+              toast.success(newValue ? '🔒 Auto-save enabled' : '⏸️ Auto-save disabled', {
+                duration: 2000,
+                position: 'top-center',
+              })
+              return newValue
+            })
+          }}
+          lastAutoSave={lastAutoSave}
         />
         
         <div className="flex-1 flex">
