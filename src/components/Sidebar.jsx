@@ -18,6 +18,7 @@ const Sidebar = ({
   const [searchTerm, setSearchTerm] = useState('')
   const [saveModalOpen, setSaveModalOpen] = useState(false)
   const [saveName, setSaveName] = useState('')
+  const [expandedFolders, setExpandedFolders] = useState(new Set())
   const fileInputRef = useRef(null)
 
   const filteredHistory = history.filter(item =>
@@ -97,25 +98,22 @@ const Sidebar = ({
     toast.success('Request deleted from collection')
   }
 
-  // Toggle folder expansion
+  // Toggle folder expansion using local state
   const toggleFolder = (folderId) => {
-    const toggleInArray = (items) => {
-      return items.map(item => {
-        if (item.type === 'folder') {
-          if (item.id === folderId) {
-            return { ...item, isExpanded: !item.isExpanded }
-          } else {
-            return { ...item, items: toggleInArray(item.items) }
-          }
-        }
-        return item
-      })
-    }
-    
-    // We need to update the collections state
-    // This assumes onImportCollection can also be used to update collections
-    const updatedCollections = toggleInArray(collections)
-    onImportCollection(updatedCollections)
+    setExpandedFolders(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(folderId)) {
+        newSet.delete(folderId)
+      } else {
+        newSet.add(folderId)
+      }
+      return newSet
+    })
+  }
+
+  // Check if folder is expanded
+  const isFolderExpanded = (folderId) => {
+    return expandedFolders.has(folderId)
   }
 
   const exportCollections = () => {
@@ -567,6 +565,7 @@ const Sidebar = ({
                         onLoadFromCollection={onLoadFromCollection}
                         onDeleteFromCollection={deleteFromCollection}
                         onToggleFolder={toggleFolder}
+                        isFolderExpanded={isFolderExpanded}
                         getMethodColor={getMethodColor}
                         formatDate={formatDate}
                         level={0}
@@ -623,11 +622,14 @@ const CollectionItem = ({
   onLoadFromCollection, 
   onDeleteFromCollection, 
   onToggleFolder, 
+  isFolderExpanded,
   getMethodColor, 
   formatDate, 
   level = 0 
 }) => {
   if (item.type === 'folder') {
+    const isExpanded = isFolderExpanded(item.id)
+    
     return (
       <div className="mb-1">
         {/* Folder Header */}
@@ -639,7 +641,7 @@ const CollectionItem = ({
           style={{ paddingLeft: `${8 + level * 16}px` }}
         >
           <div className="flex items-center flex-1">
-            {item.isExpanded ? (
+            {isExpanded ? (
               <ChevronDown size={14} className="text-gray-500 mr-2" />
             ) : (
               <ChevronRight size={14} className="text-gray-500 mr-2" />
@@ -663,7 +665,7 @@ const CollectionItem = ({
         </div>
 
         {/* Folder Contents */}
-        {item.isExpanded && (
+        {isExpanded && (
           <div className="ml-2">
             {item.items.map((subItem) => (
               <CollectionItem
@@ -672,6 +674,7 @@ const CollectionItem = ({
                 onLoadFromCollection={onLoadFromCollection}
                 onDeleteFromCollection={onDeleteFromCollection}
                 onToggleFolder={onToggleFolder}
+                isFolderExpanded={isFolderExpanded}
                 getMethodColor={getMethodColor}
                 formatDate={formatDate}
                 level={level + 1}
