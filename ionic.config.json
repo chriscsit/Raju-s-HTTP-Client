@@ -1,0 +1,8 @@
+{
+  "name": "rajus-api-client",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "react",
+  "id": "rajus-api-client"
+} 

@@ -1,5 +1,5 @@
 {
-  "appId": "com.raju.apiclient",
+  "appId": "com.rajusapp.apiclient",
   "appName": "Raju's API Client",
   "webDir": "dist",
   "bundledWebRuntime": false,
