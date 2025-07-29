@@ -304,7 +304,6 @@ const Sidebar = ({
           id: item.id || Date.now() + Math.random(),
           name: item.name || 'Untitled Folder',
           type: 'folder',
-          isExpanded: false, // Default to collapsed
           items: item.item.map(subItem => processItem(subItem)).filter(Boolean),
           createdAt: new Date().toISOString()
         }
