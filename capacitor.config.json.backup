@@ -1,0 +1,61 @@
+{
+  "appId": "com.rajusapp.apiclient",
+  "appName": "Raju's API Client",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "allowNavigation": [
+      "*"
+    ]
+  },
+  "plugins": {
+    "StatusBar": {
+      "style": "default",
+      "backgroundColor": "#ffffff"
+    },
+    "Keyboard": {
+      "resize": "native"
+    },
+    "Filesystem": {
+      "permissions": {
+        "write": "granted"
+      }
+    }
+  },
+  "ios": {
+    "scheme": "Rajus API Client",
+    "contentInset": "automatic",
+    "allowsLinkPreview": false,
+    "scrollEnabled": true,
+    "backgroundColor": "#ffffff",
+    "minVersion": "13.0"
+  },
+  "electron": {
+    "trayIconAndMenuEnabled": false,
+    "splashScreenEnabled": true,
+    "splashScreenImageName": "splash.png",
+    "hideMainWindowOnLaunch": false,
+    "deepLinkingEnabled": false,
+    "deepLinkingCustomProtocol": "rajus-api-client",
+    "windowOptions": {
+      "title": "Raju's API Client",
+      "width": 1400,
+      "height": 900,
+      "minWidth": 800,
+      "minHeight": 600,
+      "webPreferences": {
+        "nodeIntegration": false,
+        "contextIsolation": true,
+        "webSecurity": true
+      },
+      "icon": "assets/icon.png",
+      "show": true,
+      "center": true,
+      "resizable": true,
+      "maximizable": true,
+      "minimizable": true,
+      "closable": true,
+      "titleBarStyle": "default"
+    }
+  }
+}

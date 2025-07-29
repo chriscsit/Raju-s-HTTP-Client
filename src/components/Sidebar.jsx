@@ -135,8 +135,10 @@ const Sidebar = ({
     const file = event.target.files[0]
     if (!file) return
 
-    if (!file.name.endsWith('.json')) {
-      toast.error('Please select a JSON file')
+    // Accept both .json and no extension (some Postman exports)
+    const fileName = file.name.toLowerCase()
+    if (!fileName.endsWith('.json') && !fileName.includes('postman') && file.type !== 'application/json') {
+      toast.error('Please select a valid JSON file (.json)')
       return
     }
 
@@ -144,48 +146,176 @@ const Sidebar = ({
     reader.onload = (e) => {
       try {
         const content = JSON.parse(e.target.result)
+        console.log('Importing file:', file.name, 'Content:', content)
         
-        // Support both our format and Postman format
+        // Support multiple collection formats
         let importedCollections = []
         
-        if (content.item && Array.isArray(content.item)) {
-          // Postman format
-          importedCollections = content.item.map((item, index) => ({
+        // Format 1: Postman Collection v2.1 or v2.0
+        if (content.info && content.item && Array.isArray(content.item)) {
+          console.log('Detected Postman Collection format')
+          importedCollections = processPostmanCollection(content)
+        }
+        // Format 2: Postman Collection v1 (legacy)
+        else if (content.requests && Array.isArray(content.requests)) {
+          console.log('Detected Postman Collection v1 format')
+          importedCollections = content.requests.map((item, index) => ({
             id: item.id || Date.now() + index,
             name: item.name || `Imported Request ${index + 1}`,
             request: {
-              method: item.request?.method || 'GET',
-              url: typeof item.request?.url === 'string' 
-                ? item.request.url 
-                : item.request?.url?.raw || '',
-              headers: item.request?.header?.map(h => ({
-                key: h.key || '',
-                value: h.value || '',
+              method: item.method || 'GET',
+              url: item.url || '',
+              headers: item.headers ? Object.entries(item.headers).map(([key, value]) => ({
+                key,
+                value,
                 enabled: true
-              })) || [{ key: '', value: '', enabled: true }],
-              body: item.request?.body?.raw || '',
-              bodyType: item.request?.body?.mode === 'raw' ? 'json' : item.request?.body?.mode || 'json'
+              })) : [{ key: '', value: '', enabled: true }],
+              body: item.data || item.rawModeData || '',
+              bodyType: item.dataMode === 'raw' ? 'json' : item.dataMode || 'json'
             },
-            createdAt: item.createdAt || new Date().toISOString()
+            createdAt: item.time || new Date().toISOString()
           }))
-        } else if (Array.isArray(content)) {
-          // Our format (array of collections)
+        }
+        // Format 3: Our internal format (array of collections)
+        else if (Array.isArray(content)) {
+          console.log('Detected internal format')
           importedCollections = content
-        } else {
-          throw new Error('Unsupported file format')
+        }
+        // Format 4: Single request object
+        else if (content.request || content.method) {
+          console.log('Detected single request format')
+          importedCollections = [{
+            id: Date.now(),
+            name: content.name || 'Imported Request',
+            request: {
+              method: content.method || content.request?.method || 'GET',
+              url: content.url || content.request?.url?.raw || content.request?.url || '',
+              headers: formatHeaders(content.headers || content.request?.header) || [{ key: '', value: '', enabled: true }],
+              body: content.body || content.request?.body?.raw || '',
+              bodyType: content.bodyType || (content.request?.body?.mode === 'raw' ? 'json' : content.request?.body?.mode) || 'json'
+            },
+            createdAt: content.createdAt || new Date().toISOString()
+          }]
+        }
+        else {
+          throw new Error(`Unsupported file format. Expected Postman collection or request array.\nFile structure: ${Object.keys(content).join(', ')}`)
+        }
+
+        if (importedCollections.length === 0) {
+          throw new Error('No valid requests found in the imported file')
         }
 
         onImportCollection(importedCollections)
-        toast.success(`Imported ${importedCollections.length} requests successfully`)
+        toast.success(`Successfully imported ${importedCollections.length} request${importedCollections.length !== 1 ? 's' : ''} from ${file.name}`)
         
       } catch (error) {
         console.error('Import error:', error)
-        toast.error('Failed to import collection. Please check the file format.')
+        toast.error(`Import failed: ${error.message}`)
       }
+    }
+    
+    reader.onerror = () => {
+      toast.error('Failed to read file. Please try again.')
     }
     
     reader.readAsText(file)
     event.target.value = '' // Reset file input
+  }
+
+  // Helper function to process Postman collections
+  const processPostmanCollection = (content) => {
+    const items = []
+    
+    const processItem = (item, folderName = '') => {
+      if (item.item && Array.isArray(item.item)) {
+        // This is a folder, process its items recursively
+        const currentFolderName = folderName ? `${folderName}/${item.name}` : item.name
+        item.item.forEach(subItem => processItem(subItem, currentFolderName))
+      } else if (item.request) {
+        // This is a request
+        const requestName = folderName ? `${folderName}/${item.name}` : item.name
+        
+        let url = ''
+        if (typeof item.request.url === 'string') {
+          url = item.request.url
+        } else if (item.request.url?.raw) {
+          url = item.request.url.raw
+        } else if (item.request.url?.protocol && item.request.url?.host) {
+          const protocol = Array.isArray(item.request.url.protocol) ? item.request.url.protocol.join('') : item.request.url.protocol
+          const host = Array.isArray(item.request.url.host) ? item.request.url.host.join('.') : item.request.url.host
+          const path = Array.isArray(item.request.url.path) ? '/' + item.request.url.path.join('/') : item.request.url.path || ''
+          url = `${protocol}://${host}${path}`
+        }
+
+        items.push({
+          id: item.id || Date.now() + Math.random(),
+          name: requestName || `Imported Request ${items.length + 1}`,
+          request: {
+            method: item.request.method || 'GET',
+            url: url,
+            headers: formatHeaders(item.request.header) || [{ key: '', value: '', enabled: true }],
+            body: extractBody(item.request.body),
+            bodyType: getBodyType(item.request.body)
+          },
+          createdAt: item.createdAt || new Date().toISOString()
+        })
+      }
+    }
+
+    content.item.forEach(item => processItem(item))
+    return items
+  }
+
+  // Helper function to format headers
+  const formatHeaders = (headers) => {
+    if (!headers || !Array.isArray(headers)) return [{ key: '', value: '', enabled: true }]
+    
+    const formattedHeaders = headers.map(h => ({
+      key: h.key || '',
+      value: h.value || '',
+      enabled: h.disabled !== true
+    }))
+    
+    // Always ensure at least one empty header row
+    if (formattedHeaders.length === 0 || !formattedHeaders.some(h => !h.key && !h.value)) {
+      formattedHeaders.push({ key: '', value: '', enabled: true })
+    }
+    
+    return formattedHeaders
+  }
+
+  // Helper function to extract body content
+  const extractBody = (body) => {
+    if (!body) return ''
+    
+    if (typeof body === 'string') return body
+    if (body.raw) return body.raw
+    if (body.urlencoded) {
+      return body.urlencoded.map(item => `${item.key}=${item.value}`).join('&')
+    }
+    if (body.formdata) {
+      return JSON.stringify(body.formdata, null, 2)
+    }
+    
+    return ''
+  }
+
+  // Helper function to determine body type
+  const getBodyType = (body) => {
+    if (!body) return 'json'
+    if (body.mode) {
+      switch (body.mode) {
+        case 'raw':
+          if (body.options?.raw?.language === 'json') return 'json'
+          if (body.options?.raw?.language === 'xml') return 'xml'
+          if (body.options?.raw?.language === 'html') return 'html'
+          return 'text'
+        case 'urlencoded': return 'form'
+        case 'formdata': return 'form'
+        default: return 'json'
+      }
+    }
+    return 'json'
   }
 
   if (!isOpen) return null
@@ -331,7 +461,7 @@ const Sidebar = ({
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".json"
+                    accept=".json,application/json"
                     onChange={handleImportFile}
                     className="hidden"
                   />
