@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Send, Plus, Trash2, Save, Copy } from 'lucide-react'
+import { Send, Plus, Trash2, Save, Copy, Lock, Eye, EyeOff } from 'lucide-react'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import Editor from '@monaco-editor/react'
@@ -17,6 +17,8 @@ const RequestPanel = ({
   const [activeTab, setActiveTab] = useState('headers')
   const [saveModalOpen, setSaveModalOpen] = useState(false)
   const [saveName, setSaveName] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showApiKey, setShowApiKey] = useState(false)
 
   const methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS']
   const bodyTypes = ['json', 'form-data', 'raw', 'none']
@@ -50,6 +52,49 @@ const RequestPanel = ({
     onUpdateRequest({ body: value })
   }
 
+  const handleAuthChange = (authUpdates) => {
+    onUpdateRequest({ 
+      auth: { ...request.auth, ...authUpdates }
+    })
+  }
+
+  // Generate authorization header from auth settings
+  const generateAuthHeader = (auth, activeEnvironment, onSubstituteVariables) => {
+    if (!auth || auth.type === 'none') return null
+
+    switch (auth.type) {
+      case 'bearer':
+        if (auth.bearer) {
+          const token = onSubstituteVariables ? onSubstituteVariables(auth.bearer, activeEnvironment) : auth.bearer
+          return { key: 'Authorization', value: `Bearer ${token}`, enabled: true }
+        }
+        break
+      case 'basic':
+        if (auth.basic.username && auth.basic.password) {
+          const username = onSubstituteVariables ? onSubstituteVariables(auth.basic.username, activeEnvironment) : auth.basic.username
+          const password = onSubstituteVariables ? onSubstituteVariables(auth.basic.password, activeEnvironment) : auth.basic.password
+          const credentials = btoa(`${username}:${password}`)
+          return { key: 'Authorization', value: `Basic ${credentials}`, enabled: true }
+        }
+        break
+      case 'apikey':
+        if (auth.apikey.key && auth.apikey.value && auth.apikey.location === 'header') {
+          const key = onSubstituteVariables ? onSubstituteVariables(auth.apikey.key, activeEnvironment) : auth.apikey.key
+          const value = onSubstituteVariables ? onSubstituteVariables(auth.apikey.value, activeEnvironment) : auth.apikey.value
+          return { key, value, enabled: true }
+        }
+        break
+      case 'custom':
+        if (auth.custom.header && auth.custom.value) {
+          const header = onSubstituteVariables ? onSubstituteVariables(auth.custom.header, activeEnvironment) : auth.custom.header
+          const value = onSubstituteVariables ? onSubstituteVariables(auth.custom.value, activeEnvironment) : auth.custom.value
+          return { key: header, value, enabled: true }
+        }
+        break
+    }
+    return null
+  }
+
   const handleBodyTypeChange = (type) => {
     onUpdateRequest({ bodyType: type })
   }
@@ -64,11 +109,29 @@ const RequestPanel = ({
     const startTime = Date.now()
 
     try {
-      // Apply environment variable substitution
-      const substitutedUrl = onSubstituteVariables(request.url, activeEnvironment)
+      // Apply environment variable substitution to URL
+      let substitutedUrl = onSubstituteVariables(request.url, activeEnvironment)
+      
+      // Add API key as query parameter if configured
+      if (request.auth.type === 'apikey' && request.auth.apikey.location === 'query' && 
+          request.auth.apikey.key && request.auth.apikey.value) {
+        const keyName = onSubstituteVariables(request.auth.apikey.key, activeEnvironment)
+        const keyValue = onSubstituteVariables(request.auth.apikey.value, activeEnvironment)
+        
+        const separator = substitutedUrl.includes('?') ? '&' : '?'
+        substitutedUrl += `${separator}${encodeURIComponent(keyName)}=${encodeURIComponent(keyValue)}`
+      }
       
       // Prepare headers with variable substitution
       const headers = {}
+      
+      // Add auth header if configured
+      const authHeader = generateAuthHeader(request.auth, activeEnvironment, onSubstituteVariables)
+      if (authHeader) {
+        headers[authHeader.key] = authHeader.value
+      }
+      
+      // Add manual headers
       request.headers.forEach(header => {
         if (header.enabled && header.key.trim() && header.value.trim()) {
           const substitutedKey = onSubstituteVariables(header.key.trim(), activeEnvironment)
@@ -189,17 +252,18 @@ const RequestPanel = ({
       {/* Tabs */}
       <div className="border-b border-gray-200">
         <div className="flex">
-          {['headers', 'body'].map(tab => (
+          {['auth', 'headers', 'body'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 font-medium text-sm ${
+              className={`px-4 py-2 font-medium text-sm flex items-center space-x-1 ${
                 activeTab === tab
                   ? 'text-blue-600 border-b-2 border-blue-600'
                   : 'text-gray-500 hover:text-gray-700'
               }`}
             >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {tab === 'auth' && <Lock size={14} />}
+              <span>{tab.charAt(0).toUpperCase() + tab.slice(1)}</span>
             </button>
           ))}
         </div>
@@ -207,6 +271,222 @@ const RequestPanel = ({
 
       {/* Tab Content */}
       <div className="flex-1 overflow-hidden">
+        {activeTab === 'auth' && (
+          <div className="p-4 h-full overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-medium text-gray-900 flex items-center">
+                <Lock size={16} className="mr-2" />
+                Authorization
+              </h3>
+            </div>
+
+            {/* Auth Type Selection */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Type
+              </label>
+              <select
+                value={request.auth.type}
+                onChange={(e) => handleAuthChange({ type: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="none">No Authentication</option>
+                <option value="bearer">Bearer Token</option>
+                <option value="basic">Basic Auth</option>
+                <option value="apikey">API Key</option>
+                <option value="custom">Custom Header</option>
+              </select>
+            </div>
+
+            {/* Bearer Token */}
+            {request.auth.type === 'bearer' && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Bearer Token
+                  </label>
+                  <input
+                    type="text"
+                    value={request.auth.bearer}
+                    onChange={(e) => handleAuthChange({ bearer: e.target.value })}
+                    placeholder="Enter bearer token or {{variable}}"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Will be sent as: <code className="bg-gray-100 px-1 rounded">Authorization: Bearer &lt;token&gt;</code>
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Basic Auth */}
+            {request.auth.type === 'basic' && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Username
+                  </label>
+                  <input
+                    type="text"
+                    value={request.auth.basic.username}
+                    onChange={(e) => handleAuthChange({ 
+                      basic: { ...request.auth.basic, username: e.target.value }
+                    })}
+                    placeholder="Enter username or {{variable}}"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      value={request.auth.basic.password}
+                      onChange={(e) => handleAuthChange({ 
+                        basic: { ...request.auth.basic, password: e.target.value }
+                      })}
+                      placeholder="Enter password or {{variable}}"
+                      className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Will be sent as: <code className="bg-gray-100 px-1 rounded">Authorization: Basic &lt;base64(username:password)&gt;</code>
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* API Key */}
+            {request.auth.type === 'apikey' && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Key Name
+                  </label>
+                  <input
+                    type="text"
+                    value={request.auth.apikey.key}
+                    onChange={(e) => handleAuthChange({ 
+                      apikey: { ...request.auth.apikey, key: e.target.value }
+                    })}
+                    placeholder="e.g., X-API-Key, api_key"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Key Value
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showApiKey ? "text" : "password"}
+                      value={request.auth.apikey.value}
+                      onChange={(e) => handleAuthChange({ 
+                        apikey: { ...request.auth.apikey, value: e.target.value }
+                      })}
+                      placeholder="Enter API key or {{variable}}"
+                      className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowApiKey(!showApiKey)}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    >
+                      {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Location
+                  </label>
+                  <select
+                    value={request.auth.apikey.location}
+                    onChange={(e) => handleAuthChange({ 
+                      apikey: { ...request.auth.apikey, location: e.target.value }
+                    })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="header">Header</option>
+                    <option value="query">Query Parameter</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {request.auth.apikey.location === 'header' 
+                      ? `Will be sent as header: ${request.auth.apikey.key || 'Key-Name'}: ${request.auth.apikey.value || 'value'}`
+                      : `Will be sent as query parameter: ?${request.auth.apikey.key || 'key'}=${request.auth.apikey.value || 'value'}`
+                    }
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Custom Header */}
+            {request.auth.type === 'custom' && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Header Name
+                  </label>
+                  <input
+                    type="text"
+                    value={request.auth.custom.header}
+                    onChange={(e) => handleAuthChange({ 
+                      custom: { ...request.auth.custom, header: e.target.value }
+                    })}
+                    placeholder="e.g., X-Custom-Auth, Authorization"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Header Value
+                  </label>
+                  <input
+                    type="text"
+                    value={request.auth.custom.value}
+                    onChange={(e) => handleAuthChange({ 
+                      custom: { ...request.auth.custom, value: e.target.value }
+                    })}
+                    placeholder="Enter custom header value or {{variable}}"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Will be sent as: <code className="bg-gray-100 px-1 rounded">{request.auth.custom.header || 'Header-Name'}: {request.auth.custom.value || 'value'}</code>
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Auth Preview */}
+            {request.auth.type !== 'none' && (
+              <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h4 className="text-sm font-medium text-blue-900 mb-2">Authorization Preview</h4>
+                <div className="text-sm text-blue-800 font-mono">
+                  {(() => {
+                    const authHeader = generateAuthHeader(request.auth, activeEnvironment, onSubstituteVariables)
+                    if (authHeader) {
+                      return `${authHeader.key}: ${authHeader.value}`
+                    }
+                    return "No authorization header will be generated (missing required fields)"
+                  })()}
+                </div>
+                <p className="text-xs text-blue-600 mt-2">
+                  💡 This header will be automatically added to your request
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
         {activeTab === 'headers' && (
           <div className="p-4 h-full overflow-y-auto">
             <div className="flex items-center justify-between mb-4">

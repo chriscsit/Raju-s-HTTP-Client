@@ -12,7 +12,14 @@ function App() {
     url: '',
     headers: [{ key: '', value: '', enabled: true }],
     body: '',
-    bodyType: 'json'
+    bodyType: 'json',
+    auth: {
+      type: 'none', // none, bearer, basic, apikey, custom
+      bearer: '',
+      basic: { username: '', password: '' },
+      apikey: { key: '', value: '', location: 'header' }, // header or query
+      custom: { header: '', value: '' }
+    }
   })
   
   const [response, setResponse] = useState(null)
